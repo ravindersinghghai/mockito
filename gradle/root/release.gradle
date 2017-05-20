@@ -33,6 +33,13 @@ releasing {
     team.contributors = []
 }
 
+/**
+ * Mockito team does not publish to Maven Central every release as requested by the community.
+ * We publish to maven central only some versions. All versions are published to Bintray on every change.
+ * See https://github.com/mockito/mockito/issues/911
+ */
+boolean centralRelease = shouldReleaseToCentral(project)
+
 allprojects {
     plugins.withId("org.mockito.mockito-release-tools.bintray") {
         bintray {
@@ -44,17 +51,15 @@ allprojects {
                 name = 'mockito' //https://bintray.com/mockito/maven/mockito
                 licenses = ['MIT']
                 labels = ['mocks', 'tdd', 'unit tests']
-                publish = false //can be changed to 'false' for testing
+                publish = true //can be changed to 'false' for testing
 
                 //See our Bintray packages at https://bintray.com/mockito/maven
-                name = rootProject.releasing.notableRelease? "mockito" : "mockito-development"
+                name = centralRelease? "mockito" : "mockito-development"
 
                 version {
-                    //Automatically syncs to central repository (https://oss.sonatype.org/)
+                    //Notable versions are automatically synced to Maven Central repository (https://oss.sonatype.org/)
                     mavenCentralSync {
-                        sync = false
-                        // TODO, change above to below when the new publication logic is rid of glitches:
-                        // sync = rootProject.ext.has('release_notable') //can be set to 'false' for testing
+                        sync = centralRelease
                         user = System.env.NEXUS_TOKEN_USER
                         password = System.env.NEXUS_TOKEN_PWD
                     }
@@ -62,4 +67,20 @@ allprojects {
             }
         }
     }
+}
+
+/**
+ * Finds out if we should release to Maven Central.
+ * To test this logic, run build with '-i' (info logging) and inspect the build output.
+ */
+static boolean shouldReleaseToCentral(project) {
+    boolean centralReleaseByCommit = System.getenv("TRAVIS_COMMIT_MESSAGE")?.contains("[ci maven-central-release]")
+    boolean centralReleaseByProjectProperty = project.hasProperty("maven-central-release")
+    boolean centralRelease = centralReleaseByCommit || centralReleaseByProjectProperty
+    def message = """Using following settings:
+ - commit message contains '[ci maven-central-release]': $centralReleaseByCommit
+ - project property 'maven-central-release' exists: $centralReleaseByProjectProperty
+ - Maven Central release is enabled: $centralRelease"""
+    project.logger.info(message)
+    project.performRelease.doFirst { logger.lifecycle(message) }
 }
